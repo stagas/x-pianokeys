@@ -1,0 +1,46 @@
+{
+  "extends": "@tsconfig/node16/tsconfig.json",
+  "watchOptions": {
+    "watchFile": "priorityPollingInterval",
+    "watchDirectory": "dynamicPriorityPolling"
+  },
+  "ts-node": {
+    "files": true
+  },
+  "include": [
+    "example",
+    "src",
+    "test",
+    "types"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ],
+  "compilerOptions": {
+    "outDir": "dist/cjs",
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ],
+    "emitDeclarationOnly": true,
+    "moduleResolution": "node",
+    "useDefineForClassFields": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "inlineSources": true,
+    "declaration": true,
+    "skipDefaultLibCheck": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "allowJs": true,
+    "incremental": true,
+    "module": "commonjs",
+    "target": "esnext",
+    "jsx": "preserve",
+    "strict": true
+  }
+}
