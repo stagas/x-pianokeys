@@ -126,7 +126,7 @@ button {
 }
 `('')
 
-export interface PianoKeysElement extends $.Element<PianoKeysElement> {}
+export interface PianoKeysElement extends $.Element<PianoKeysElement> { }
 
 @$.element()
 export class PianoKeysElement extends $.mix(HTMLElement, midi()) {
@@ -182,8 +182,8 @@ export class PianoKeysElement extends $.mix(HTMLElement, midi()) {
         halfOctaves % 2 === 0
           ? +!vertical
           : halfOctaves % 1 === 0
-          ? -1
-          : 1
+            ? -1
+            : 1
       )
     )
 
@@ -195,7 +195,7 @@ export class PianoKeysElement extends $.mix(HTMLElement, midi()) {
       if (note == 0) $.firstPressed = true
       host.sendMidi(0x90, 12 * startOctave + +note, 127)
       if (el) el.classList.add('pressed')
-    }), _ => {})
+    }), _ => { })
 
     $.turnOffKey = $.reduce(({ host, keyboard, startOctave }) => (note => {
       const el = keyboard.querySelector(`[data-note="${note}"]`)
@@ -204,7 +204,7 @@ export class PianoKeysElement extends $.mix(HTMLElement, midi()) {
       if (note == 0) $.firstPressed = false
       host.sendMidi(0x89, 12 * startOctave + +note, 0)
       if (el) el.classList.remove('pressed')
-    }), _ => {})
+    }), _ => { })
 
     $.onPointerEnter = $.reduce(({ turnOnKey }) => (e => {
       if (e.buttons > 1) return
@@ -224,7 +224,7 @@ export class PianoKeysElement extends $.mix(HTMLElement, midi()) {
     $.onPointerUp = $.reduce(({ host }) => (e => {
       if (e.buttons > 1) return
       host.focus()
-    }), _ => {})
+    }), _ => { })
 
     $.onKeyDown = $.reduce(({ turnOnKey }) => (e => {
       if (e.shiftKey) {
@@ -289,7 +289,7 @@ export class PianoKeysElement extends $.mix(HTMLElement, midi()) {
             newHalfOctaves = Math.round(width / (kw * 0.6) / 6) || halfOctaves
           if (newHalfOctaves !== halfOctaves) $.halfOctaves = newHalfOctaves
         }),
-      _ => {}
+      _ => { }
     )
 
     $.effect(({ host, onResize }) => $.observe.resize(host, onResize))
@@ -324,7 +324,7 @@ export class PianoKeysElement extends $.mix(HTMLElement, midi()) {
           }
           if (vertical) {
             ;[width, height] = [height, width]
-            ;[x, y] = [y, x]
+              ;[x, y] = [y, x]
           }
           const key = (
             <rect
@@ -340,19 +340,16 @@ export class PianoKeysElement extends $.mix(HTMLElement, midi()) {
               data-note={vertical
                 ? numberOfKeys - i - 1
                 : i}
-              class={`note ${
-                (+bw ^ +invertColors)
-                  ? 'black'
-                  : 'white'
-              } ${nt} ${
-                vertical
+              class={`note ${(+bw ^ +invertColors)
+                ? 'black'
+                : 'white'
+                } ${nt} ${vertical
                   ? 'vertical'
                   : ''
-              } ${
-                i % 4 === 1
+                } ${i % 4 === 1
                   ? ''
                   : ''
-              }`}
+                }`}
               width={width | 0}
               height={height | 0}
               x={x | 0}
@@ -694,3 +691,5 @@ const InverseWhiteGradientPressed = (
     />
   </linearGradient>
 )
+
+export const PianoKeys = $.element(PianoKeysElement)
