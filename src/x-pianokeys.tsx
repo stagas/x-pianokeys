@@ -1,384 +1,311 @@
-/** @jsxImportSource sigl */
-import $ from 'sigl'
+/** @jsxImportSource minimal-view */
 
-import { isMobileAgent } from 'is-mobile-agent'
-import { midi } from './midi'
+import { element, queue, view, web } from 'minimal-view'
 
-let isResizing = false
+import { observe } from './observe'
 
-const style = $.css /*css*/`
-:host {
-  --pressed-white: #e44;
-  --pressed-black: #e44;
-  --key-white: #ccc;
-  --key-black: #111;
-  contain: size layout style paint;
-  position: relative;
-  touch-action: none;
-  display: inline-flex;
-  width: 100%;
-  height: 100%;
+// TODO: this should be declared in types/global.d.ts but for
+// some unknown reason it's not happening always.
+// NOTE: if this is removed it doesn't compile
+declare const MIDIMessageEvent: WebMidi.MIDIMessageEvent
+
+export type MidiEvents = {
+  midimessage: WebMidi.MIDIMessageEvent
 }
-[part=piano] {
-  contain: size layout style paint;
-  shape-rendering: optimizeSpeed;
-  position: relative;
-  user-select: none;
-  width: 100%;
-  height: 100%;
-}
-[part=octave] {
-  contain: size layout style paint;
-  pointer-events: none;
-  font-family: sans-serif;
-  font-weight: bold;
-  fill: #b1b1b1;
-  /* ${isMobileAgent ? '' : `filter: drop-shadow(-0.5px -0.5px 1.5px rgba(255,255,255,.17));`} */
-}
-[part=octave].pressed {
-  fill: #a9a9f1;
-  /* ${isMobileAgent ? '' : `filter: drop-shadow(-0.5px -0.5px 1.5px rgba(225,225,255,.10));`} */
-}
-.note {
-  shape-rendering: optimizeSpeed;
-}
-:host(:not([invertColors])) {
-  .black {
-    fill: url(#black-horizontal);
-    /* ${isMobileAgent ? '' : `filter: url(#drop-shadow-high);`} */
-    &.pressed {
-      fill: url(#black-horizontal-pressed);
-      filter: url(#black-pressed-color) url(#drop-shadow-low);
-    }
-    &.vertical {
-      fill: url(#black-vertical);
-      &.pressed {
-        fill: url(#black-vertical-pressed);
-      }
-    }
+
+const midiMessageEvent = new MIDIMessageEvent('midimessage', {
+  data: new Uint8Array([0, 0, 0]),
+})
+
+const getNote = (key: string) => {
+  key = key.toLowerCase()
+  let note = 'zsxdcvgbhnjm,l.;/\'\\'.indexOf(key)
+  if (note < 0) {
+    note = 'q2w3er5t6y7ui9o0p[=]'.indexOf(key)
+    if (note >= 0) note += 12
+    else return -1
   }
+  return note
 }
 
-:host([invertColors]) {
-  .black {
-    fill: url(#inverse-black-horizontal);
-    /* ${isMobileAgent ? '' : `filter: url(#drop-shadow-high);`} */
-    &.pressed {
-      fill: url(#inverse-black-horizontal-pressed);
-      filter: url(#inset-shadow) url(#black-pressed-color);
-    }
-    &.vertical {
-      fill: url(#inverse-black-vertical);
-      &.pressed {
-        fill: url(#inverse-black-vertical-pressed);
-      }
-    }
-  }
-}
+export const PianoKeys = web(view('piano-keys',
+  class props {
+    halfOctaves?= 2
+    /** Height of black keys `100`=full height */
+    blackHeight?= 71
+    /** Keys average width in pixels */
+    keyWidth?= 27
+    /** Leftmost octave */
+    startHalfOctave?= 5
+    /** Makes piano vertical */
+    vertical?= false
+    /** Invert colors */
+    invertColors?= false
+    audioContext!: BaseAudioContext
+    onMidiEvent!: (ev: WebMidi.MIDIMessageEvent) => void
+  },
+  class local {
+    host = element
 
-:host(:not([invertColors])) {
-  .white {
-    fill: url(#white-horizontal);
-    &.pressed {
-      fill: url(#white-horizontal-pressed);
-      filter: url(#inset-shadow) url(#white-pressed-color);
-    }
-    &.vertical {
-      fill: url(#white-vertical);
-      &.pressed {
-        fill: url(#white-vertical-pressed);
-      }
-    }
-  }
-}
+    rect?: DOMRect
+    numberOfKeys?: number
+    width?: number
+    keyboard?: SVGSVGElement
+    firstPressed = false
+    button?: HTMLButtonElement
 
-:host([invertColors]) {
-  .white {
-    fill: url(#inverse-white-horizontal);
-    &.pressed {
-      fill: url(#inverse-white-horizontal-pressed);
-      filter: url(#white-pressed-color) url(#drop-shadow-low);
-    }
-    &.vertical {
-      fill: url(#inverse-white-vertical);
-      &.pressed {
-        fill: url(#inverse-white-vertical-pressed);
-      }
-    }
-  }
-}
+    keysView?: JSX.Element
+    octaveText?: JSX.Element
 
-button {
-  contain: size layout style paint;
-  box-sizing: border-box;
-  pointer-events: none;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  margin: 0;
-  position: absolute;
-  top: 0;
-  outline: none;
-  background: none;
-  color: #fff;
-  caret-color: none;
-  resize: none;
-}
-`('')
+    isResizing = false
+  },
+  function actions({ $, fns, fn }) {
 
-export interface PianoKeysElement extends $.Element<PianoKeysElement> { }
-
-@$.element()
-export class PianoKeysElement extends $.mix(HTMLElement, midi()) {
-  /** Height of black keys `100`=full height */
-  @$.attr() blackHeight = 67
-  /** Keys average width in pixels */
-  @$.attr() keyWidth = 27
-  /** Leftmost octave */
-  @$.attr() startOctave = 5
-  /** Makes piano vertical */
-  @$.attr() vertical = false
-  /** Invert colors */
-  @$.attr() invertColors = false
-
-  rect?: DOMRect
-  halfOctaves = 2
-  numberOfKeys?: number
-  width?: number
-  keyboard?: SVGSVGElement
-  firstPressed = false
-  button?: HTMLButtonElement
-  turnOnKey?: (note: string | number) => void
-  turnOffKey?: (note: string | number) => void
-  onPointerEnter?: $.EventHandler<SVGRectElement, PointerEvent>
-  onPointerLeave?: $.EventHandler<SVGRectElement, PointerEvent>
-  onPointerUp?: $.EventHandler<SVGSVGElement, PointerEvent>
-  onKeyDown?: $.EventHandler<HTMLButtonElement, KeyboardEvent>
-  onKeyUp?: $.EventHandler<HTMLButtonElement, KeyboardEvent>
-  onResize?: ResizeObserverCallback
-
-  focus() {
-    this.button?.focus({ preventScroll: true })
-  }
-
-  mounted($: this['$']) {
     const pressed = new Set<number>()
 
-    const getNote = (key: string) => {
-      key = key.toLowerCase()
-      let note = 'zsxdcvgbhnjm,l.;/\'\\'.indexOf(key)
-      if (note < 0) {
-        note = 'q2w3er5t6y7ui9o0p[=]'.indexOf(key)
-        if (note >= 0) note += 12
-        else return -1
+    const stopResizing = queue.debounce(400)(() => {
+      $.isResizing = false
+    })
+
+    return fns(new class actions {
+
+      sendMidi(a: number, b: number, c: number) {
+        if (!$.audioContext) {
+          throw new Error('sendMidi is missing AudioContext')
+        }
+        midiMessageEvent.receivedTime = 0 //this.audioContext.currentTime * 1000
+        midiMessageEvent.data[0] = a
+        midiMessageEvent.data[1] = b
+        midiMessageEvent.data[2] = c
+        $.onMidiEvent(midiMessageEvent)
       }
-      return note
-    }
 
-    $.width = $.reduce(({ keyWidth, numberOfKeys }) => numberOfKeys * keyWidth)
 
-    $.numberOfKeys = $.reduce(({ halfOctaves, vertical }) =>
-      6 * halfOctaves + (
+      turnOnKey = fn(({ host, keyboard, startHalfOctave }) => (note => {
+        if ($.isResizing) return
+        const el = keyboard.querySelector(`[data-note="${note}"]`)
+        if (pressed.has(+note)) return
+        pressed.add(+note)
+        if (note == 0) $.firstPressed = true
+        this.sendMidi(0x90, 6 * startHalfOctave + +note, 127)
+        if (el) el.classList.add('pressed')
+      }))
+
+      turnOffKey = fn(({ host, keyboard, startHalfOctave }) => (note => {
+        const el = keyboard.querySelector(`[data-note="${note}"]`)
+        if (!pressed.has(+note)) return
+        pressed.delete(+note)
+        if (note == 0) $.firstPressed = false
+        this.sendMidi(0x89, 12 * startHalfOctave + +note, 0)
+        if (el) el.classList.remove('pressed')
+      }))
+
+
+      onPointerEnter = (e: PointerEvent & { currentTarget: SVGRectElement }) => {
+        if (e.buttons > 1) return
+        e.preventDefault()
+        e.stopPropagation()
+        const note = e.currentTarget.dataset.note
+        if (note != null && e.buttons) {
+          this.focus()
+          e.currentTarget.releasePointerCapture(e.pointerId)
+          this.turnOnKey(note)
+        }
+      }
+
+
+      onPointerLeave = (e: PointerEvent & { currentTarget: SVGRectElement }) => {
+        if (e.buttons > 1) return
+        const note = e.currentTarget.dataset.note
+        if (note != null) this.turnOffKey(note)
+      }
+
+      onPointerUp = (e: PointerEvent & { currentTarget: SVGRectElement }) => {
+        if (e.buttons > 1) return
+        this.focus()
+      }
+
+
+      onKeyDown = (e: KeyboardEvent) => {
+        if (e.shiftKey) {
+          if (e.key === 'ArrowRight') {
+            e.preventDefault()
+            $.startHalfOctave! += 2
+          } else if (e.key === 'ArrowLeft') {
+            e.preventDefault()
+            $.startHalfOctave! -= 2
+          }
+        }
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+        if (e.key === 'Tab') return
+        e.preventDefault()
+        const note = getNote(e.key)
+        if (note >= 0) this.turnOnKey(note)
+      }
+
+      onKeyUp = (e: KeyboardEvent) => {
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+        if (e.key === 'Tab') return
+        e.preventDefault()
+        const note = getNote(e.key)
+        if (note >= 0) this.turnOffKey(note)
+      }
+
+      onResize: ResizeObserverCallback = fn(
+        ({ vertical, keyWidth, halfOctaves }) =>
+          queue.throttle(50).first.last.not.next(([resizeEntry]) => {
+            $.isResizing = true
+            stopResizing()
+            const rect = $.rect = resizeEntry.contentRect
+            const width = vertical ? rect.height : rect.width
+            const height = vertical ? rect.width : rect.height
+            let kw = keyWidth
+            if (vertical) {
+              if (height < 60 && width < 200)
+                kw *= 0.35
+              else {
+                if (width < 360) kw *= 0.64
+                else if (width < 460) kw *= 0.77
+                else if (width < 570) kw *= 0.8
+              }
+            } else {
+              if (height < 60) {
+                kw *= 0.45
+                if (width < 200) kw *= 0.6
+              } else {
+                if (width < 280) kw *= 0.5
+                else if (width < 340) kw *= 0.6
+                else if (width < 380) kw *= 0.7
+                else if (width < 520) kw *= 0.75
+                else if (width < 570) kw *= 0.9
+              }
+            }
+            let newHalfOctaves = Math.round(width / kw / 6) || halfOctaves
+            if (newHalfOctaves === 1 && width > 30)
+              newHalfOctaves = Math.round(width / (kw * 0.6) / 6) || halfOctaves
+            if (newHalfOctaves !== halfOctaves) $.halfOctaves = newHalfOctaves
+          })
+      )
+
+      focus = () => {
+        $.button?.focus({ preventScroll: true })
+      }
+
+    })
+  },
+  function effects({ $, fx, deps, refs }) {
+    fx(({ host, isResizing }) => {
+      host.toggleAttribute('resizing', isResizing)
+    })
+
+    fx(({ keyWidth, numberOfKeys }) => {
+      $.width = numberOfKeys * keyWidth
+    })
+
+    fx(({ halfOctaves, vertical, startHalfOctave }) => {
+      const isExact = startHalfOctave % 2 === 0
+
+      $.numberOfKeys = (6 * halfOctaves + (
         halfOctaves % 2 === 0
           ? +!vertical
           : halfOctaves % 1 === 0
-            ? -1
+            ? -1 + (isExact ? 0 : 2)
             : 1
       )
-    )
-
-    $.turnOnKey = $.reduce(({ host, keyboard, startOctave }) => (note => {
-      if (isResizing) return
-      const el = keyboard.querySelector(`[data-note="${note}"]`)
-      if (pressed.has(+note)) return
-      pressed.add(+note)
-      if (note == 0) $.firstPressed = true
-      host.sendMidi(0x90, 12 * startOctave + +note, 127)
-      if (el) el.classList.add('pressed')
-    }), _ => { })
-
-    $.turnOffKey = $.reduce(({ host, keyboard, startOctave }) => (note => {
-      const el = keyboard.querySelector(`[data-note="${note}"]`)
-      if (!pressed.has(+note)) return
-      pressed.delete(+note)
-      if (note == 0) $.firstPressed = false
-      host.sendMidi(0x89, 12 * startOctave + +note, 0)
-      if (el) el.classList.remove('pressed')
-    }), _ => { })
-
-    $.onPointerEnter = $.reduce(({ turnOnKey }) => (e => {
-      if (e.buttons > 1) return
-      const note = e.currentTarget.dataset.note
-      if (note != null && e.buttons) {
-        e.currentTarget.releasePointerCapture(e.pointerId)
-        turnOnKey(note)
-      }
-    }))
-
-    $.onPointerLeave = $.reduce(({ turnOffKey }) => (e => {
-      if (e.buttons > 1) return
-      const note = e.currentTarget.dataset.note
-      if (note != null) turnOffKey(note)
-    }))
-
-    $.onPointerUp = $.reduce(({ host }) => (e => {
-      if (e.buttons > 1) return
-      host.focus()
-    }), _ => { })
-
-    $.onKeyDown = $.reduce(({ turnOnKey }) => (e => {
-      if (e.shiftKey) {
-        if (e.key === 'ArrowRight') {
-          e.preventDefault()
-          $.startOctave += 1
-        } else if (e.key === 'ArrowLeft') {
-          e.preventDefault()
-          $.startOctave -= 1
-        }
-      }
-      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
-      if (e.key === 'Tab') return
-      e.preventDefault()
-      const note = getNote(e.key)
-      if (note >= 0) turnOnKey(note)
-    }))
-
-    $.onKeyUp = $.reduce(({ turnOffKey }) => (e => {
-      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
-      if (e.key === 'Tab') return
-      e.preventDefault()
-      const note = getNote(e.key)
-      if (note >= 0) turnOffKey(note)
-    }))
-
-    const stopResizing = $.queue.debounce(400)(() => {
-      isResizing = false
+      )
     })
 
-    $.onResize = $.reduce(
-      ({ vertical, keyWidth, halfOctaves }) =>
-        $.queue.throttle(50).first.last.not.next(([resizeEntry]) => {
-          isResizing = true
-          stopResizing()
-          const rect = $.rect = resizeEntry.contentRect
-          const width = vertical ? rect.height : rect.width
-          const height = vertical ? rect.width : rect.height
-          let kw = keyWidth
-          if (vertical) {
-            if (height < 60 && width < 200)
-              kw *= 0.35
-            else {
-              if (width < 360) kw *= 0.64
-              else if (width < 460) kw *= 0.77
-              else if (width < 570) kw *= 0.8
-            }
-          } else {
-            if (height < 60) {
-              kw *= 0.45
-              if (width < 200) kw *= 0.6
-            } else {
-              if (width < 280) kw *= 0.5
-              else if (width < 340) kw *= 0.6
-              else if (width < 380) kw *= 0.7
-              else if (width < 520) kw *= 0.75
-              else if (width < 570) kw *= 0.9
-            }
-          }
-          let newHalfOctaves = Math.round(width / kw / 6) || halfOctaves
-          if (newHalfOctaves === 1 && width > 30)
-            newHalfOctaves = Math.round(width / (kw * 0.6) / 6) || halfOctaves
-          if (newHalfOctaves !== halfOctaves) $.halfOctaves = newHalfOctaves
-        }),
-      _ => { }
+    fx(({ host, onResize }) =>
+      observe.resize(host, onResize)
     )
-
-    $.effect(({ host, onResize }) => $.observe.resize(host, onResize))
 
     const keyRefs = new Map()
 
-    const Keys = $.part(
-      ({ numberOfKeys, keyWidth, blackHeight, vertical, invertColors, onPointerEnter, onPointerLeave }) => {
-        const b = []
-        const w = []
-        const blackKeyWidth = keyWidth + 1
-        const whiteKeyWidth = blackKeyWidth + keyWidth
-        const halfKeyWidth = keyWidth * 0.5
-        for (let i = 0; i < numberOfKeys; i++) {
-          const k = (vertical ? numberOfKeys - i - 1 : i) % 12
-          const bw = 'wbwbwwbwbwbw'[k] === 'b'
-          const nt = 'ccddeffggaab'[k]
-          const lx = vertical
-            ? '    x      x'[k] === 'x'
-            : 'x    x      '[k] === 'x'
-          // const rx = '    x      x'[k] === 'x'
-          let width, height, x, y = 0
+    fx(({ numberOfKeys, keyWidth, blackHeight, vertical, invertColors, startHalfOctave }) => {
+      const b = []
+      const w = []
+      const blackKeyWidth = keyWidth + 1
+      const whiteKeyWidth = blackKeyWidth + keyWidth
+      const halfKeyWidth = keyWidth * 0.5
+      const blackKeyExpand = 12
+      const isExact = startHalfOctave % 2 === 0
+      for (let i = 0; i < numberOfKeys; i++) {
+        const k = (vertical ? numberOfKeys - i - 1 + (isExact ? 0 : 5) : i) % 12
+        const bw = 'wbwbwwbwbwbw'[k] === 'b'
+        const nt = 'ccddeffggaab'[k]
+        const lx = vertical
+          ? '    x      x'[k] === 'x'
+          : 'x    x      '[k] === 'x'
+        // const rx = '    x      x'[k] === 'x'
+        let width, height, x, y = 0
 
-          if (bw) {
-            width = blackKeyWidth
-            height = blackHeight
-            x = i * keyWidth - 1
-          } else {
-            width = whiteKeyWidth
-            height = 100
-            x = i * keyWidth - (lx ? 0 : halfKeyWidth) - 1
-          }
-          if (vertical) {
-            ;[width, height] = [height, width]
-              ;[x, y] = [y, x]
-          }
-          const key = (
-            <rect
-              key={i}
-              ref={{
-                get current() {
-                  return null // keyRefs.get(i)
-                },
-                set current(el) {
-                  keyRefs.set(i, el)
-                },
-              }}
-              data-note={vertical
-                ? numberOfKeys - i - 1
-                : i}
-              class={`note ${(+bw ^ +invertColors)
-                ? 'black'
-                : 'white'
-                } ${nt} ${vertical
-                  ? 'vertical'
-                  : ''
-                } ${i % 4 === 1
-                  ? ''
-                  : ''
-                }`}
-              width={width | 0}
-              height={height | 0}
-              x={x | 0}
-              y={y | 0}
-              onpointerdown={onPointerEnter}
-              onpointermove={onPointerEnter}
-              onpointerenter={onPointerEnter}
-              onpointerleave={onPointerLeave}
-              onpointerup={onPointerLeave}
-            />
-          )
-          if (bw) b.push(key)
-          else w.push(key)
+        if (bw) {
+          width = blackKeyWidth + blackKeyExpand
+          height = blackHeight
+          x = i * keyWidth - 1 - blackKeyExpand / 2
+        } else {
+          width = whiteKeyWidth
+          height = 100
+          x = i * keyWidth - (lx ? 0 : halfKeyWidth) - 1
         }
-        return (
-          <>
-            <g>
-              {w}
-            </g>
-            <g /* filter={isMobileAgent ? '' : 'url(#drop-shadow-high)'} */>
-              {b}
-            </g>
-          </>
+        if (vertical) {
+          ;[width, height] = [height, width]
+            ;[x, y] = [y, x]
+        }
+        const key = (
+          <rect
+            key={i}
+            ref={{
+              get current() {
+                return null // keyRefs.get(i)
+              },
+              set current(el) {
+                keyRefs.set(i, el)
+              },
+            }}
+            data-note={vertical
+              ? numberOfKeys - i - 1
+              : i}
+            class={`note ${(+bw ^ +invertColors)
+              ? 'black'
+              : 'white'
+              } ${nt} ${vertical
+                ? 'vertical'
+                : ''
+              } ${i % 4 === 1
+                ? ''
+                : ''
+              }`}
+            width={width | 0}
+            height={height | 0}
+            x={x | 0}
+            y={y | 0}
+            onpointerdown={$.onPointerEnter}
+            onpointermove={$.onPointerEnter}
+            onpointerenter={$.onPointerEnter}
+            onpointerleave={$.onPointerLeave}
+            onpointerup={$.onPointerLeave}
+          />
         )
+        if (bw) b.push(key)
+        else w.push(key)
       }
+
+      $.keysView = (
+        <>
+          <g>
+            {w}
+          </g>
+          <g /* filter={isMobileAgent ? '' : 'url(#drop-shadow-high)'} */>
+            {b}
+          </g>
+        </>
+      )
+    }
     )
 
-    // const OctaveText = part(({ width, rect, vertical, firstPressed, keyWidth, startOctave }) => (
-    //   <TextAlignCenter
+    // fx(({ width, rect, vertical, firstPressed, keyWidth, startHalfOctave }) => {
+    //   $.octaveText = <TextAlignCenter
     //     part="octave"
     //     class={firstPressed ? 'pressed' : ''}
     //     vertical={vertical}
@@ -387,20 +314,144 @@ export class PianoKeysElement extends $.mix(HTMLElement, midi()) {
     //     y={100 - 14.5 + (firstPressed ? 2.62 : 0)}
     //     fontSize={11}
     //   >
-    //     C{startOctave}
+    //     C{startHalfOctave}
     //   </TextAlignCenter>
-    // ))
+    // })
 
-    $.render(({ width, vertical, onKeyDown, onKeyUp, onPointerUp }) => (
-      <>
-        <style>{style}</style>
-        <button ref={$.ref.button} onkeydown={onKeyDown} onkeyup={onKeyUp}></button>
+    $.css = /*css*/`
+    & {
+      --pressed-white: #e44;
+      --pressed-black: #e44;
+      --key-white: #ccc;
+      --key-black: #111;
+      contain: size layout style paint;
+      position: relative;
+      touch-action: none;
+      display: inline-flex;
+      width: 100%;
+      height: 100%;
+    }
+    &([resizing]) {
+      pointer-events: none;
+    }
+    [part=piano] {
+      contain: size layout style paint;
+      shape-rendering: optimizeSpeed;
+      position: relative;
+      user-select: none;
+      width: 100%;
+      height: 100%;
+    }
+    [part=octave] {
+      contain: size layout style paint;
+      pointer-events: none;
+      font-family: sans-serif;
+      font-weight: bold;
+      fill: #b1b1b1;
+      filter: drop-shadow(-0.5px -0.5px 1.5px rgba(255,255,255,.17));
+    }
+    [part=octave].pressed {
+      fill: #a9a9f1;
+      filter: drop-shadow(-0.5px -0.5px 1.5px rgba(225,225,255,.10));
+    }
+    .note {
+      shape-rendering: optimizeSpeed;
+    }
+
+    &(:not([invertColors])) {
+      .black {
+        fill: url(#black-horizontal);
+        filter: url(#drop-shadow-high);
+
+        &.pressed {
+          fill: url(#black-horizontal-pressed);
+          filter: url(#black-pressed-color) url(#drop-shadow-low);
+        }
+        &.vertical {
+          fill: url(#black-vertical);
+          &.pressed {
+            fill: url(#black-vertical-pressed);
+          }
+        }
+      }
+    }
+
+    &([invertColors]) {
+      .black {
+        fill: url(#inverse-black-horizontal);
+        filter: url(#drop-shadow-high);
+        &.pressed {
+          fill: url(#inverse-black-horizontal-pressed);
+          filter: url(#inset-shadow) url(#black-pressed-color);
+        }
+        &.vertical {
+          fill: url(#inverse-black-vertical);
+          &.pressed {
+            fill: url(#inverse-black-vertical-pressed);
+          }
+        }
+      }
+    }
+
+    &(:not([invertColors])) {
+      .white {
+        fill: url(#white-horizontal);
+        &.pressed {
+          fill: url(#white-horizontal-pressed);
+          filter: url(#inset-shadow) url(#white-pressed-color);
+        }
+        &.vertical {
+          fill: url(#white-vertical);
+          &.pressed {
+            fill: url(#white-vertical-pressed);
+          }
+        }
+      }
+    }
+
+    &([invertColors]) {
+      .white {
+        fill: url(#inverse-white-horizontal);
+        &.pressed {
+          fill: url(#inverse-white-horizontal-pressed);
+          filter: url(#white-pressed-color) url(#drop-shadow-low);
+        }
+        &.vertical {
+          fill: url(#inverse-white-vertical);
+          &.pressed {
+            fill: url(#inverse-white-vertical-pressed);
+          }
+        }
+      }
+    }
+
+    button {
+      contain: size layout style paint;
+      box-sizing: border-box;
+
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      margin: 0;
+      position: absolute;
+      top: 0;
+      outline: none;
+      background: none;
+      color: #fff;
+      caret-color: none;
+      resize: none;
+    }
+    `
+
+    fx(({ width, vertical, keysView }) => {
+      $.view = <>
+        <button ref={refs.button} onkeydown={$.onKeyDown} onkeyup={$.onKeyUp}></button>
         <svg
           part="piano"
-          ref={$.ref.keyboard}
+          ref={refs.keyboard}
           viewBox={vertical ? `0 0 100 ${width | 0}` : `0 0 ${width | 0} 100`}
           preserveAspectRatio="none"
-          onpointerup={onPointerUp}
+          onpointerup={$.onPointerUp as any}
         >
           <defs>
             {/* https://css-tricks.com/adding-shadows-to-svg-icons-with-css-and-svg-filters/ */}
@@ -484,13 +535,13 @@ export class PianoKeysElement extends $.mix(HTMLElement, midi()) {
             <InverseWhiteGradientPressed kind="vertical" x1="0" x2="1" y1="0" y2="0" />
           </defs>
 
-          <Keys />
-          {/* !isMobileAgent && <OctaveText /> */}
+          {keysView}
+          {/* {octaveText} */}
         </svg>
       </>
-    ))
+    })
   }
-}
+))
 
 // const TextAlignCenter = (
 //   { part, class: className, vertical, fontSize, width, svgWidth, y, children }: {
@@ -534,12 +585,12 @@ const BlackGradient = (
   <linearGradient id={`black-${kind}`} x1={x1} x2={x2} y1={y1} y2={y2}>
     <Stops
       colors={[
-        ['#000', 0],
-        ['#111', 45],
-        ['#666', 90],
-        ['#fff', 90.8],
-        ['#444', 91.15],
-        ['#111', 100],
+        ['#103', 0],
+        ['#214', 45],
+        ['#768', 90],
+        ['#eef', 91],
+        ['#647', 91.5],
+        ['#214', 100],
       ]}
     />
   </linearGradient>
@@ -609,20 +660,12 @@ const WhiteGradient = (
   <linearGradient id={`white-${kind}`} x1={x1} x2={x2} y1={y1} y2={y2}>
     <Stops
       colors={[
-        ['#666', 0],
-        ['#bfbfbf', 3],
-        ['#efefef', 15],
-        ['#fff', 28],
-        ['#fff', 35],
-        ['#f1f1f1', 45],
-        ['#e8e8e8', 60],
-        ['#efefef', 65],
-        ['#e8e8e8', 88],
-        ['#f2f2f2', 93],
-        ['#dadada', 93.5],
-        ['#666', 94.5],
-        ['#aaa', 95],
-        ['#e2e2e2', 100],
+        ['#768', 0],
+        ['#dacaef', 95],
+        ['#657', 95.5],
+        ['#657', 100],
+        // ['#baf', 95],
+        // ['#e2e2f2', 100],
       ]}
     />
   </linearGradient>
@@ -691,5 +734,3 @@ const InverseWhiteGradientPressed = (
     />
   </linearGradient>
 )
-
-export const PianoKeys = $.element(PianoKeysElement)
