@@ -4,10 +4,7 @@ import { element, queue, view, web } from 'minimal-view'
 
 import { observe } from './observe'
 
-// TODO: this should be declared in types/global.d.ts but for
-// some unknown reason it's not happening always.
-// NOTE: if this is removed it doesn't compile
-declare const MIDIMessageEvent: WebMidi.MIDIMessageEvent
+import { MIDIMessageEvent } from 'webaudio-tools'
 
 export type MidiEvents = {
   midimessage: WebMidi.MIDIMessageEvent
@@ -77,7 +74,7 @@ export const PianoKeys = web(view('piano-keys',
         midiMessageEvent.data[0] = a
         midiMessageEvent.data[1] = b
         midiMessageEvent.data[2] = c
-        $.onMidiEvent(midiMessageEvent)
+        $.onMidiEvent(midiMessageEvent as WebMidi.MIDIMessageEvent)
       }
 
 
