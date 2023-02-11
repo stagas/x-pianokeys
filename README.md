@@ -1,7 +1,7 @@
 
 
 <h1>
-x-pianokeys <a href="https://npmjs.org/package/x-pianokeys"><img src="https://img.shields.io/badge/npm-v3.0.0-F00.svg?colorA=000"/></a> <a href="src"><img src="https://img.shields.io/badge/loc-693-FFF.svg?colorA=000"/></a> <a href="https://cdn.jsdelivr.net/npm/x-pianokeys@3.0.0/dist/x-pianokeys.min.js"><img src="https://img.shields.io/badge/brotli-11K-333.svg?colorA=000"/></a> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F0B.svg?colorA=000"/></a>
+x-pianokeys <a href="https://npmjs.org/package/x-pianokeys"><img src="https://img.shields.io/badge/npm-v3.1.0-F00.svg?colorA=000"/></a> <a href="src"><img src="https://img.shields.io/badge/loc-693-FFF.svg?colorA=000"/></a> <a href="https://cdn.jsdelivr.net/npm/x-pianokeys@3.1.0/dist/x-pianokeys.min.js"><img src="https://img.shields.io/badge/brotli-11.2K-333.svg?colorA=000"/></a> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F0B.svg?colorA=000"/></a>
 </h1>
 
 <p></p>
@@ -120,6 +120,7 @@ render(
 ## Credits
 - [minimal-view](https://npmjs.org/package/minimal-view) by [stagas](https://github.com/stagas) &ndash; Minimal reactive component view library.
 - [to-fluent](https://npmjs.org/package/to-fluent) by [stagas](https://github.com/stagas) &ndash; Convert a function with a settings object to fluent API.
+- [webaudio-tools](https://npmjs.org/package/webaudio-tools) by [stagas](https://github.com/stagas) &ndash; Useful tools for WebAudio.
 
 ## Contributing
 
